@@ -5,12 +5,16 @@ let scoreText;
 let scoreTriggers;
 let gameOverText;
 let restartText;
+let startText;
+let isStarted = false;
+let finalScoreText;
+let highScore = 0;
 
 
 const config = {
   type: Phaser.AUTO,
-  width: 400,
-  height: 600,
+  width: window.innerWidth,
+  height: window.innerHeight,
   backgroundColor: '#87CEEB', // langit biru
   physics: {
     default: 'arcade',
@@ -40,76 +44,63 @@ function preload() {
 }
 
 function create() {
-  bird = this.physics.add.sprite(100, 300, 'bird')
-    .setDisplaySize(50, 30);        
+  bird = this.physics.add.sprite(this.scale.width * 0.25, this.scale.height / 2, 'bird')
+    .setDisplaySize(50, 30);
   bird.setCollideWorldBounds(true);
+  bird.body.allowGravity = false; // burung diam dulu di awal
 
-  // 1) Ambil dimensi asli texture
-  const src = this.textures.get('ground').getSourceImage();  
-  const groundH = 100;                    // tinggi yang mau kita tampilkan
+  window.addEventListener('resize', () => {
+    game.scale.resize(window.innerWidth, window.innerHeight);
+  });
 
+  const groundH = 100;
   this.ground = this.add.tileSprite(
     0,
-    this.scale.height - groundH,         // y = canvasHeight – groundH
-    this.scale.width,                    // lebar canvas
-    groundH,                             // tinggi ground
+    this.scale.height - groundH,
+    this.scale.width,
+    groundH,
     'ground'
   ).setOrigin(0, 0);
 
-  // 2) Tambahkan physics static body ke tileSprite
-  this.physics.add.existing(this.ground, true);  
-  this.physics.add.collider(bird, this.ground, hitPipe, null, this);
-
-
-
   this.flapSound = this.sound.add('flap');
-  this.hitSound  = this.sound.add('hit');
+  this.hitSound = this.sound.add('hit');
 
-  this.input.on('pointerdown', () => {
-    if (!gameOver) {
-      bird.setVelocityY(-250);
-      this.flapSound.play();    // <<< play flap!
-    }
-  });
-
-
-  // Group untuk pipa
   pipes = this.physics.add.group();
-  // Group untuk sensor skor
   scoreTriggers = this.physics.add.group();
 
-  // Spawn pipa tiap 1.5 detik
-  this.time.addEvent({
-    delay: 1500,
-    callback: spawnPipe,
-    callbackScope: this,
-    loop: true
-  });
-
-  // Collider burung vs pipa → game over
   this.physics.add.collider(bird, pipes, hitPipe, null, this);
-  // Overlap burung vs sensor skor → naikkan skor
   this.physics.add.overlap(bird, scoreTriggers, collectScore, null, this);
 
-  // Tampilkan skor
-  scoreText = this.add.text(20, 20, 'Score: 0', {
+  scoreText = this.add.text(this.scale.width * 0.05, this.scale.height * 0.05, 'Score: 0', {
     fontSize: '32px',
     fill: '#000'
+  }).setVisible(false);
+
+  // ——— Start Screen Text ———
+  startText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, 'Click to Play', {
+    fontSize: '48px',
+    fill: '#000'
+  }).setOrigin(0.5);
+
+  this.input.once('pointerdown', () => {
+    startText.destroy();
+    startGame.call(this);
   });
 }
 
+
 function spawnPipe() {
-  const holeY = Phaser.Math.Between(150, 450);
+  const holeY = Phaser.Math.Between(this.scale.height * 0.2, this.scale.height * 0.8);
   const gap = 150;
 
   // Pipa atas
-  const topPipe = pipes.create(400, holeY - gap/2, 'pipe')
+  const topPipe = pipes.create(this.scale.width, holeY - gap/2, 'pipe')
     .setDisplaySize(50, 500)       // misal 50×500 px
     .setOrigin(0, 1)
     .setFlipY(true);
   topPipe.refreshBody();
 
-  const bottomPipe = pipes.create(400, holeY + gap/2, 'pipe')
+  const bottomPipe = pipes.create(this.scale.width, holeY + gap/2, 'pipe')
     .setDisplaySize(50, 500)
     .setOrigin(0, 0);
   bottomPipe.refreshBody();
@@ -122,7 +113,7 @@ function spawnPipe() {
   });
 
   // —– Sensor skor —–
-  const trigger = scoreTriggers.create(400, holeY, null)
+  const trigger = scoreTriggers.create(this.scale.width, holeY, null)
     .setSize(10, 600)
     .setAlpha(0)
     .setVelocityX(-200);
@@ -153,13 +144,43 @@ function hitPipe() {
   ).setOrigin(0.5);
 
   this.input.once('pointerdown', () => resetGame.call(this));
+
+  if (score > highScore) highScore = score;
+
+  finalScoreText = this.add.text(
+    this.cameras.main.centerX,
+    this.cameras.main.centerY + 80,
+    `Final Score: ${score}\nHighest Score: ${highScore}`,
+    { fontSize: '24px', fill: '#000', align: 'center' }
+  ).setOrigin(0.5);
+
+}
+
+function startGame() {
+  isStarted = true;
+  bird.body.allowGravity = true;
+  scoreText.setVisible(true);
+
+  this.input.on('pointerdown', () => {
+    if (!gameOver) {
+      bird.setVelocityY(-250);
+      this.flapSound.play();
+    }
+  });
+
+  this.time.addEvent({
+    delay: 1500,
+    callback: spawnPipe,
+    callbackScope: this,
+    loop: true
+  });
 }
 
 
 
-
 function update() {
-  if (gameOver) return;
+  if (!isStarted || gameOver) return;
+
   
   this.ground.tilePositionX += 1;
   
@@ -205,6 +226,9 @@ function resetGame() {
   // Reset flag & physics
   gameOver = false;
   this.physics.resume();
+
+  if (finalScoreText) finalScoreText.destroy();
+
 }
 
 
